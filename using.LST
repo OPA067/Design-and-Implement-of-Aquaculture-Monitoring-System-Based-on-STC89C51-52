@@ -1,0 +1,36 @@
+C51 COMPILER V9.01   USING                                                                 04/26/2022 19:24:01 PAGE 1   
+
+
+C51 COMPILER V9.01, COMPILATION OF MODULE USING
+OBJECT MODULE PLACED IN using.OBJ
+COMPILER INVOKED BY: D:\Keil\C51\BIN\C51.EXE using.c BROWSE DEBUG OBJECTEXTEND
+
+line level    source
+
+   1          /***无线通信模块使用说明***/
+   2          /**************************
+   3          主机VS从机
+   4          主机：负责接收来自从机的数据，即为：
+   5                                                                                  1.接收数据
+   6                                                                                  2.显示数据
+   7                                                                                  3.核心处理模块
+   8          从机：负责采集水体环境的数据，即为：
+   9                                                                                  1.采集数据
+  10                                                                                  2.传递数据
+  11          区别方法：按键操作，按键按下即为从机；每隔60s向主机传递数据，主机接收数据并且显示到LCLD12864中!!!!!!
+  12          **************************/
+  13          /***无线通信模块使用说明***/
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   ----    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

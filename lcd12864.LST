@@ -1,0 +1,174 @@
+C51 COMPILER V9.01   LCD12864                                                              06/05/2022 06:55:29 PAGE 1   
+
+
+C51 COMPILER V9.01, COMPILATION OF MODULE LCD12864
+OBJECT MODULE PLACED IN lcd12864.OBJ
+COMPILER INVOKED BY: D:\Keil\C51\BIN\C51.EXE lcd12864.c ROM(COMPACT) BROWSE DEBUG OBJECTEXTEND
+
+line level    source
+
+   1          #include"lcd12864.h"
+   2          #include"reg52.h"
+   3          void LCD12864_Delay1ms(uint c)
+   4          {
+   5   1          uchar a,b;
+   6   1              for(;c>0;c--)
+   7   1                  for(b=199;b>0;b--)
+   8   1                      for(a=1;a>0;a--);
+   9   1      }
+  10          uchar LCD12864_Busy(void)
+  11          {
+  12   1              uchar i=0;
+  13   1              LCD12864_RS=0;                                                  //选择命令
+  14   1              LCD12864_RW=1;                                                  //选择读取
+  15   1              LCD12864_EN=1;
+  16   1              LCD12864_Delay1ms(1);
+  17   1              while((LCD12864_DATAPORT&0x80)==0x80)   //检测读取到的值
+  18   1              {
+  19   2                      i++;
+  20   2                      if(i>100)
+  21   2                      {
+  22   3                              LCD12864_EN=0;
+  23   3                              return 0;                                               //超过等待时间返回0表示失败
+  24   3                      }
+  25   2              }
+  26   1              LCD12864_EN=0;
+  27   1              return 1;
+  28   1      }
+  29          void LCD12864_WriteCmd(uchar cmd)
+  30          {
+  31   1              uchar i;
+  32   1              i=0;
+  33   1              while(LCD12864_Busy()==0)
+  34   1              {
+  35   2                      LCD12864_Delay1ms(1);
+  36   2                      i++;
+  37   2                      if(i>100)
+  38   2                      {
+  39   3                              return;                                                 //超过等待退出
+  40   3                      }       
+  41   2              }
+  42   1              LCD12864_RS=0;                                                  //选择命令
+  43   1              LCD12864_RW=0;                                                  //选择写入
+  44   1              LCD12864_EN=0;                                                  //初始化使能端
+  45   1              LCD12864_DATAPORT=cmd;                                  //放置数据
+  46   1              LCD12864_EN=1;                                                  //写时序
+  47   1              LCD12864_Delay1ms(5);
+  48   1              LCD12864_EN=0;                                          
+  49   1      }
+  50          void LCD12864_WriteData(uchar dat)
+  51          {
+  52   1              uchar i;
+  53   1              i=0;
+  54   1              while(LCD12864_Busy()==0)
+  55   1              {
+C51 COMPILER V9.01   LCD12864                                                              06/05/2022 06:55:29 PAGE 2   
+
+  56   2                      LCD12864_Delay1ms(1);
+  57   2                      i++;
+  58   2                      if(i>100)
+  59   2                      {
+  60   3                              return;                                                 //超过等待退出
+  61   3                      }       
+  62   2              }
+  63   1              LCD12864_RS=1;                                                  //选择数据
+  64   1              LCD12864_RW=0;                                                  //选择写入
+  65   1              LCD12864_EN=0;                                                  //初始化使能端
+  66   1              LCD12864_DATAPORT=dat;                                  //放置数据
+  67   1              LCD12864_EN=1;                                                  //写时序
+  68   1              LCD12864_Delay1ms(5);
+  69   1              LCD12864_EN=0;                                                                  
+  70   1      }
+  71          #ifdef LCD12864_PICTURE
+              uchar LCD12864_ReadData(void)
+              {
+                      uchar i,readValue;
+                      i=0;
+                      while(LCD12864_Busy()==0)
+                      {
+                              LCD12864_Delay1ms(1);
+                              i++;
+                              if(i>100)
+                              {
+                                      return 0;                                               //超过等待退出
+                              }       
+                      }
+                      LCD12864_RS=1;                                          //选择命令
+                      LCD12864_RW=1;
+                      LCD12864_EN=0;
+                      LCD12864_Delay1ms(1);                                   //等待
+                      LCD12864_EN=1;
+                      LCD12864_Delay1ms(1);
+                      readValue=LCD12864_DATAPORT;
+                      LCD12864_EN=0;
+                      return readValue;
+              }
+              #endif
+  96          void LCD12864_Init()
+  97          {
+  98   1              LCD12864_PSB=1;                                                 //选择并行输入
+  99   1              LCD12864_RST=1;                                                 //复位
+ 100   1              LCD12864_WriteCmd(0x30);                                //选择基本指令操作
+ 101   1              LCD12864_WriteCmd(0x0c);                                //显示开，关光标
+ 102   1              LCD12864_WriteCmd(0x01);                                //清除LCD12864的显示内容
+ 103   1      }
+ 104          #ifdef LCD12864_PICTURE
+              void LCD12864_ClearScreen(void)
+              {
+                      uchar i,j;
+                      LCD12864_WriteCmd(0x34);                                //开启拓展指令集
+              
+                      for(i=0;i<32;i++)                                               //因为LCD有纵坐标32格所以写三十二次
+                      {
+                              LCD12864_WriteCmd(0x80+i);                      //先写入纵坐标Y的值
+                              LCD12864_WriteCmd(0x80);                        //再写入横坐标X的值
+                              for(j=0;j<32;j++)                                       //横坐标有16位，每位写入两个字节的的数据，也
+                              {                                                                       //就写入32次以为当写入两个字节之后横坐标会自
+                                      LCD12864_WriteData(0xFF);               //动加1，所以就不用再次写入地址了。
+                              }
+C51 COMPILER V9.01   LCD12864                                                              06/05/2022 06:55:29 PAGE 3   
+
+                      }
+                      LCD12864_WriteCmd(0x36);                                //0x36扩展指令里面打开绘图显示
+                      LCD12864_WriteCmd(0x30);                                //恢复基本指令集
+              }
+              
+              #endif
+ 124          void LCD12864_SetWindow(uchar x, uchar y)
+ 125          {
+ 126   1              uchar pos;
+ 127   1              if(x==0)                //第一行的地址是80H
+ 128   1              {
+ 129   2                      x=0x80;
+ 130   2              }
+ 131   1                      
+ 132   1              else if(x==1)   //第二行的地址是90H
+ 133   1              {
+ 134   2                      x=0x90; 
+ 135   2              }
+ 136   1              
+ 137   1              else if(x==2)   //第三行的地址是88H
+ 138   1              {
+ 139   2                      x=0x88;
+ 140   2              }
+ 141   1              else if(x==3)   //第三行的地址是98H
+ 142   1              {
+ 143   2                      x=0x98;
+ 144   2              }
+ 145   1              pos=x+y;
+ 146   1              LCD12864_WriteCmd(pos);
+ 147   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    188    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

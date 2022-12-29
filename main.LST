@@ -1,0 +1,907 @@
+C51 COMPILER V9.01   MAIN                                                                  06/05/2022 06:55:29 PAGE 1   
+
+
+C51 COMPILER V9.01, COMPILATION OF MODULE MAIN
+OBJECT MODULE PLACED IN main.OBJ
+COMPILER INVOKED BY: D:\Keil\C51\BIN\C51.EXE main.c ROM(COMPACT) BROWSE DEBUG OBJECTEXTEND
+
+line level    source
+
+   1          /***导入头文件***/
+   2          #include"reg52.h"                        
+   3          #include"config.h"
+   4          #include"string.h" 
+   5          #include"lcd12864.h"
+   6          #include"math.h"
+   7          #include"ds1302.h"
+   8          #include"temp.h"
+   9          #include"XPT2046.h"
+  10          #include"O2.h"
+  11          #include"intrins.h"
+  12          #include"nRF.h"
+  13          /***红外通信***/
+  14          u8 HWValue[4];                  //数据格式数组
+  15          u8 Time;                                //红外数据参数  
+  16          u8 Value;                               //定义获取的数据，十进制表示
+  17          /***DS1302记录时间      定时器***/
+  18          u8 s,min,hour;                  //时间：时-分-秒
+  19          u16 sumTime;                    //总时间，单位s
+  20          u8 Timechar[8];                 //显示时间数组
+  21          /***水体数据显示***/
+  22          double tempD;                   //记录十进制表示的温度
+  23          double VO2D;                    //记录十进制含氧量
+  24          double StempD;                  //系统工作温度  
+  25          u16 Light;                              //记录光照强度
+  26          u16 ST;                                 //记录系统工作温度
+  27          u8 tempDchar[5];                //显示温度数组
+  28          u8 VO2Dchar[5];                 //显示氧气含量数组
+  29          u8 Lightchar[5];                //显示光照强度数组
+  30          u8 SystemTemp[6];               //显示系统工作温度数组
+  31          u8 flag=0;                              //定义数据接收标识字符
+  32          u8 ChooseZC=0;                  //主机和从机设置标志
+  33          /***检测NRF24L01通信是否正常***/
+  34          u8 bdata sta;                   //定义无线通信的标识字符
+  35          sbit RX_DR      =sta^6;
+  36          sbit TX_DS      =sta^5;
+  37          sbit MAX_RT     =sta^4;
+  38          /***初始化系统***/
+  39          void InitSystem()
+  40          {
+  41   1              motoO2   =0;            //关闭氧气电机
+  42   1              motoTemp =0;            //关闭温度电机
+  43   1              motoFeed =0;            //关闭投料电机
+  44   1              motoLight=0;            //关闭光照电机
+  45   1              beep=0;                         //关闭蜂鸣器报警                
+  46   1      }
+  47          /***初始化外部中断0***/
+  48          void Init0Int()
+  49          {
+  50   1              IT0=1;                          //下降沿触发
+  51   1              EX0=1;                          //打开中断0允许
+  52   1              EA=1;                           //打开总中断
+  53   1              HWin=1;                         //初始化端口
+  54   1      }
+  55          u8 Check_ACK(bit clear)
+C51 COMPILER V9.01   MAIN                                                                  06/05/2022 06:55:29 PAGE 2   
+
+  56          {
+  57   1              while(IRQ);
+  58   1              sta=SPI_RW(NOP);                        //返回状态寄存器
+  59   1              if(MAX_RT)
+  60   1              {                                                                               
+  61   2                      if(clear)                               //没有清除在复位MAX_RT中断标志后重发
+  62   2                      {
+  63   3                              SPI_RW(FLUSH_TX);
+  64   3                      }               
+  65   2              }
+  66   1              SPI_RW_Reg(WRITE_REG+STATUS,sta);               //清除TX_DS或MAX_RT中断标志
+  67   1              IRQ=1;
+  68   1              if(TX_DS)       return(0x00);
+  69   1              else    return(0xff);
+  70   1      }
+  71          /***温度处理函数***/
+  72          void DataDealTemp(int temp)      
+  73          {
+  74   1              double tp;
+  75   1              u8 t1,t2,t3,t4;  
+  76   1              tp=temp;                                        //因为数据处理有小数点所以将温度赋给一个浮点型变量
+  77   1              temp=tp*0.0625*100+0.5;     //+0.5是四舍五入
+  78   1              t1=temp%10000/1000;                     //温度十位
+  79   1              tempDchar[0]=t1+'0';    
+  80   1              t2=temp%1000/100;                       //温度个位
+  81   1              tempDchar[1]=t2+'0';  
+  82   1              tempDchar[2]='.';       
+  83   1              t3=temp%100/10;                         //温度十分位
+  84   1              tempDchar[3]=t3+'0';
+  85   1              t4=temp%10/1;                           //温度百分位
+  86   1              tempDchar[4]=t4+'0'; 
+  87   1              tp=t1*10+t2+t3*0.1+t4*0.01;
+  88   1              tempD=tp;                                       //返回十进制温度全局变量，用于实时处理
+  89   1      }
+  90          /***氧气处理函数***/
+  91          void DataDealVO2(double vo2)    
+  92          {
+  93   1              u8 v1,v2,v3,v4;
+  94   1              int Intvo2=(int)(vo2*100);  
+  95   1              v1=Intvo2/1000;
+  96   1              VO2Dchar[0]=v1+'0';             //氧气十位                        
+  97   1              v2=Intvo2/100%10;
+  98   1              VO2Dchar[1]=v2+'0';                     //氧气个位
+  99   1              VO2Dchar[2]='.';                        //氧气数据小数点
+ 100   1              v3=Intvo2%100/10;
+ 101   1              VO2Dchar[3]=v3+'0';                     //氧气十分位
+ 102   1              v4=Intvo2%10;
+ 103   1              VO2Dchar[4]=v4+'0';                     //氧气百分位
+ 104   1              VO2D=v1*10+v2
+ 105   1                       +v3*0.1+v4*0.01;               //返回十进制氧气全局变量，用于实时处理
+ 106   1      }
+ 107          /***按键操作，用户确定主机和从机***/
+ 108          void CheckButtons()
+ 109          {       
+ 110   1              if(k1==0)                                                                       //用户按下K1按键，说明当前被按下的单片机为数据发送端，另外一段为数据接收端                  
+ 111   1              {
+ 112   2                      delay(20);                                                              //延时
+ 113   2                      if(k1==0)                           
+ 114   2                      {
+ 115   3                              DataDealTemp(Ds18b20ReadTemp());        //温度数据处理函数
+ 116   3                              DataDealVO2(TempToVO2(tempD));          //氧气数据处理函数
+ 117   3                              TX_Mode(TX_BUF);                                        //把nRF24L01设置为发送模式并发送数据
+C51 COMPILER V9.01   MAIN                                                                  06/05/2022 06:55:29 PAGE 3   
+
+ 118   3                              Check_ACK(1);                           //等待发送完毕，清除TX_FIFO
+ 119   3                              RX_Mode();                                              //设置为接收模式
+ 120   3                              while(!k1);                                                     //消抖
+ 121   3                              ChooseZC=1;                                                     //设置标识
+ 122   3                      }       
+ 123   2              }
+ 124   1              if(ChooseZC==1)
+ 125   1              {
+ 126   2                      Delay2000ms();                                                  //延时2000ms再进行数据传输，可适当增加到一分钟
+ 127   2                      DataDealTemp(Ds18b20ReadTemp());                //温度数据处理函数
+ 128   2                      DataDealVO2(TempToVO2(tempD));                  //氧气数据处理函数
+ 129   2                      TX_Mode(TX_BUF);                                                //把nRF24L01设置为发送模式并发送数据
+ 130   2                      Check_ACK(1);                                   //等待发送完毕，清除TX_FIFO
+ 131   2                      RX_Mode();                                                      //设置为接收模式                
+ 132   2              }       
+ 133   1      }
+ 134          /***光照处理函数***/
+ 135          void ADDealLight()
+ 136          {       
+ 137   1              Light=Read_AD_Data(0xa4);                                       //AIN2光敏电阻
+ 138   1              Light=Read_AD_Data(0xa4);                                       //AIN2光敏电阻
+ 139   1              Light=Read_AD_Data(0xa4);                                       //AIN2光敏电阻
+ 140   1              Lightchar[0]=Light/1000+'0';                            //数据千位
+ 141   1              Lightchar[1]=Light%1000/100+'0';                        //数据百位
+ 142   1              Lightchar[2]=Light%1000%100/10+'0';                     //数据十位
+ 143   1              Lightchar[3]=Light%1000%100%10+'0';                     //数据个位                      
+ 144   1      }
+ 145          /***系统温度处理函数***/
+ 146          void ADDealSystemTemp()
+ 147          {       
+ 148   1              ST=Read_AD_Data(0xd4);                                          //AIN1热敏电阻  
+ 149   1              ST=Read_AD_Data(0xd4);                                          //AIN1热敏电阻
+ 150   1              ST=Read_AD_Data(0xd4);                                          //AIN1热敏电阻  
+ 151   1              StempD=ST/100+ST%1000/100;      
+ 152   1              SystemTemp[0]=ST/1000+'0';                                      //数据千位
+ 153   1              SystemTemp[1]=ST%1000/100+'0';                          //数据百位
+ 154   1              SystemTemp[2]='.';                                                      //显示小数点
+ 155   1              SystemTemp[3]=ST%1000%100/10+'0';                       //数据十位
+ 156   1              SystemTemp[4]=ST%1000%100%10+'0';                       //数据个位              
+ 157   1      }
+ 158          /***通用LCD12864输出，传入u8类型的字符数组***/
+ 159          void LCD12864Dis(u8 LCD12864String[])
+ 160          {
+ 161   1              u8 i=0;
+ 162   1              while(LCD12864String[i]!='\0')
+ 163   1              {
+ 164   2                       LCD12864_WriteData(LCD12864String[i]);
+ 165   2                       i++;
+ 166   2              }
+ 167   1      }
+ 168          /***红外中断处理函数***/
+ 169          void ReadIr() interrupt 0                                               //定义外部中断0
+ 170          {
+ 171   1              u8 j,k;
+ 172   1              u16 err;
+ 173   1              Time=0;                                                                 
+ 174   1              delay(700);                                                                     //延时7ms
+ 175   1              if(HWin==0)                                                                     //确认是否真的接收到正确的信号
+ 176   1              {               
+ 177   2                      err=1000;                                       
+ 178   2                      while((HWin==0)&&(err>0))                               //等待前面9ms的低电平过去               
+ 179   2                      {                       
+C51 COMPILER V9.01   MAIN                                                                  06/05/2022 06:55:29 PAGE 4   
+
+ 180   3                              delay(1);
+ 181   3                              err--;
+ 182   3                      } 
+ 183   2                      if(HWin==1)                                                             //如果正确等到9ms低电平
+ 184   2                      {
+ 185   3                              err=500;
+ 186   3                              while((HWin==1)&&(err>0))                       //等待4.5ms的起始高电平过去
+ 187   3                              {
+ 188   4                                      delay(1);
+ 189   4                                      err--;
+ 190   4                              }
+ 191   3                              for(k=0;k<4;k++)                                        //共有4组数据，数据格式获取
+ 192   3                              {                               
+ 193   4                                      for(j=0;j<8;j++)                                //接收一组数据
+ 194   4                                      {
+ 195   5      
+ 196   5                                              err=60;         
+ 197   5                                              while((HWin==0)&&(err>0))       //等待信号前面的560us低电平过去
+ 198   5                                              {
+ 199   6                                                      delay(1);
+ 200   6                                                      err--;
+ 201   6                                              }
+ 202   5                                              err=500;
+ 203   5                                              while((HWin==1)&&(err>0))       //计算高电平的时间长度。
+ 204   5                                              {
+ 205   6                                                      delay(10);                              //延时0.1ms
+ 206   6                                                      Time++;
+ 207   6                                                      err--;
+ 208   6                                                      if(Time>30)
+ 209   6                                                      {
+ 210   7                                                              return;
+ 211   7                                                      }
+ 212   6                                              }
+ 213   5                                              HWValue[k]>>=1;                         //k表示第几组数据
+ 214   5                                              if(Time>=8)                                     //如果高电平出现大于565us，那么是1
+ 215   5                                              {
+ 216   6                                                      HWValue[k]|=0x80;
+ 217   6                                              }
+ 218   5                                              Time=0;                                         //用完时间要重新赋值                                                    
+ 219   5                                      }
+ 220   4                              }
+ 221   3                      }
+ 222   2                      if(HWValue[2]!=~HWValue[3])                             //检验数据码和数据反码是否相同
+ 223   2                      {
+ 224   3                              return;
+ 225   3                      }
+ 226   2              }                       
+ 227   1      }
+ 228          /***红外按键处理函数HWWorkButton_xx()***/
+ 229          void HWWorkButton_00()                                                  //显示开机界面，显示初始界面，显示当前时间
+ 230          {               
+ 231   1              LCD12864_WriteCmd(0x01);
+ 232   1              Delay100ms();   
+ 233   1              LCD12864_SetWindow(0,0);                                        //LCD初始显示位置左上角(x,y)==(0,0)
+ 234   1              LCD12864Dis(LCD12864Init);                                      //打印开机初始化信息
+ 235   1              LCD12864_SetWindow(1,0);                                        //LCD初始显示位置(x,y)==(1,0)
+ 236   1              LCD12864Dis(LCD12864Hello);                                     //打印开机初始化信息
+ 237   1              Delay1000ms();                                                          //系统等待2s
+ 238   1              LCD12864_SetWindow(1,0);
+ 239   1              LCD12864Dis(LCD12864Doing);                                     //显示用户提示信息
+ 240   1              Delay1000ms();
+ 241   1              LCD12864_SetWindow(2,0);                                        //显示用户提示信息
+C51 COMPILER V9.01   MAIN                                                                  06/05/2022 06:55:29 PAGE 5   
+
+ 242   1              LCD12864Dis(LCD12864Key);
+ 243   1              delayLong(1);                                                           //长延时Delaylong-10                                                                                            
+ 244   1      }
+ 245          void HWWorkButton_01()                                                  //系统时钟测试
+ 246          {
+ 247   1              Ds1302Init();                                                           //初始化Ds302时钟，从00:00:00开始计时
+ 248   1              LCD12864_WriteCmd(0x01);                                        //清除LCD12864的显示内容
+ 249   1              Delay100ms();
+ 250   1              s=0;min=0;hour=0;                                                       //初始化系统计时器
+ 251   1              while(1)
+ 252   1              {                       
+ 253   2                      LCD12864_SetWindow(0, 0);  
+ 254   2                      LCD12864Dis(LCD12864Init);
+ 255   2                      Delay100ms();
+ 256   2                      LCD12864_SetWindow(1,0);
+ 257   2                      LCD12864Dis(LCD12864Time);
+ 258   2                      Ds1302ReadTime();                                               //获取实时时间数据      
+ 259   2                      Timechar[0]=(int)(NOWTIME[2]/16)+'0';   Timechar[1]=(int)(NOWTIME[2]&0x0f)+'0';         Timechar[2]=':';
+ 260   2                      Timechar[3]=(int)(NOWTIME[1]/16)+'0';   Timechar[4]=(int)(NOWTIME[1]&0x0f)+'0';         Timechar[5]=':';
+ 261   2                      Timechar[6]=(int)(NOWTIME[0]/16)+'0';   Timechar[7]=(int)(NOWTIME[0]&0x0f)+'0';
+ 262   2                      LCD12864Dis(Timechar);
+ 263   2                      motoO2   =1;
+ 264   2                      motoTemp =1;
+ 265   2                      motoFeed =1;
+ 266   2                      motoLight=1;
+ 267   2                      Delay100ms();
+ 268   2                      LCD12864_SetWindow(2,0);
+ 269   2                      LCD12864Dis(LCD12864motoONALL);
+ 270   2                      Delay100ms();   
+ 271   2                      LCD12864_SetWindow(3,0);
+ 272   2                      LCD12864Dis(LCD12864Set);                                                               
+ 273   2                      Value=HWValue[2]/16*10+HWValue[2]%16;   //获取数据码高4位和低4位,转化为对应的十进制，方便处理
+ 274   2                      if(Value==40)
+ 275   2                      {
+ 276   3                              memset(NOWTIME,0,sizeof(NOWTIME));      //清空时间数据
+ 277   3                              motoO2   =0;
+ 278   3                              motoTemp =0;
+ 279   3                              motoFeed =0;
+ 280   3                              motoLight=0;
+ 281   3                              break;                                                          //实际对应的按键值是4           
+ 282   3                      }       
+ 283   2              }
+ 284   1              HWWorkButton_04();                                                      //系统索引界面
+ 285   1      }
+ 286          void HWWorkButton_02()                                                  //蜂鸣器测试模块
+ 287          {
+ 288   1              LCD12864_WriteCmd(0x01);                                        //清除LCD12864的显示内容
+ 289   1              Delay1000ms();
+ 290   1              LCD12864_SetWindow(0,0);  
+ 291   1              LCD12864Dis(LCD12864Init);
+ 292   1              LCD12864_SetWindow(1,0);
+ 293   1              Delay1000ms();  
+ 294   1              LCD12864Dis(LCD12864BeepStatus);
+ 295   1              if(beep==0)
+ 296   1              {
+ 297   2                      LCD12864Dis("-ON");                                     //显示报警模块打开
+ 298   2              }
+ 299   1              else
+ 300   1              {
+ 301   2                      LCD12864Dis("OFF");                                             //显示报警模块关闭
+ 302   2              }
+ 303   1              Delay2000ms();  
+C51 COMPILER V9.01   MAIN                                                                  06/05/2022 06:55:29 PAGE 6   
+
+ 304   1              LCD12864_SetWindow(2,0);
+ 305   1              LCD12864Dis(LCD12864BeepON);
+ 306   1              LCD12864_SetWindow(3,0);
+ 307   1              LCD12864Dis(LCD12863Line);              
+ 308   1              BeepWarning();                                                          //按复位键退出 
+ 309   1      }
+ 310          void HWWorkButton_03()                                                  //显示各项电机工作状态
+ 311          {
+ 312   1              LCD12864_WriteCmd(0x01);                                        //清除LCD12864的显示内容
+ 313   1              Delay100ms();
+ 314   1              LCD12864_SetWindow(0,0);                                        //LCD初始显示位置左上角(x,y)==(0,0)
+ 315   1              LCD12864Dis(LCD12864Init);                                      //打印开机初始化信息
+ 316   1              LCD12864_SetWindow(1,0);
+ 317   1              LCD12864Dis(LCD12864motoStatus);
+ 318   1              LCD12864_SetWindow(2,0);        
+ 319   1              LCD12864Dis(LCD12864motoWorkingFindStatus);
+ 320   1              Delay1000ms();
+ 321   1              while(1)
+ 322   1              {       
+ 323   2                      LCD12864_WriteCmd(0x01);                                //清除LCD12864的显示内容
+ 324   2                      LCD12864_SetWindow(0,0);
+ 325   2                      LCD12864Dis(LCD12864motoO2);
+ 326   2                      if(motoO2==1)   LCD12864Dis("已开启-ON");       
+ 327   2                      else    LCD12864Dis("已关闭OFF");
+ 328   2                      Delay100ms();
+ 329   2                      LCD12864_SetWindow(1,0);
+ 330   2                      LCD12864Dis(LCD12864motoTemp);
+ 331   2                      if(motoTemp==1) LCD12864Dis("已开启-ON");
+ 332   2                      else   LCD12864Dis("已关闭OFF");
+ 333   2                      Delay100ms();
+ 334   2                      LCD12864_SetWindow(2,0);
+ 335   2                      LCD12864Dis(LCD12864motoFeed);
+ 336   2                      if(motoFeed==1)LCD12864Dis("已开启-ON");
+ 337   2                      else LCD12864Dis("已关闭OFF");
+ 338   2                      Delay100ms();
+ 339   2                      LCD12864_SetWindow(3,0); 
+ 340   2                      LCD12864Dis(LCD12864motoLight); 
+ 341   2                      if(motoLight==1)  LCD12864Dis("已开启-ON");
+ 342   2                      else LCD12864Dis("已关闭OFF");  
+ 343   2                      Delay2000ms();
+ 344   2                      Value=HWValue[2]/16*10+HWValue[2]%16;   //获取数据码高4位和低4位,转化为对应的十进制，方便处理
+ 345   2                      if(Value==40)   break;                                  //实际对应的按键值是4                   
+ 346   2              }
+ 347   1              HWWorkButton_04();
+ 348   1      }
+ 349          void HWWorkButton_04()                                                  //显示返回信息，菜单信息===系统索引界面  
+ 350          {
+ 351   1              LCD12864_WriteCmd(0x01);                                        //清除LCD12864的显示内容 
+ 352   1              Delay100ms();
+ 353   1              LCD12864_WriteCmd(0x01);
+ 354   1              LCD12864_SetWindow(0,0);                                        //LCD初始显示位置左上角(x,y)==(0,0)
+ 355   1              LCD12864Dis(LCD12864Init);                                      //打印开机初始化信息
+ 356   1              LCD12864_SetWindow(1,0);
+ 357   1              LCD12864Dis(LCD12864MenuHint);
+ 358   1              LCD12864_SetWindow(2,0);
+ 359   1              LCD12864Dis(LCD12864Menu);       
+ 360   1              LCD12864_SetWindow(3,0);
+ 361   1              LCD12864Dis(LCD12863Line); 
+ 362   1              Delay2000ms();                                                          //延时接受新的红外数据信号
+ 363   1              return;
+ 364   1      }       
+ 365          void HWWorkButton_05()                                                  //显示NRF24L01无线传输的信息.
+C51 COMPILER V9.01   MAIN                                                                  06/05/2022 06:55:29 PAGE 7   
+
+ 366          {
+ 367   1              motoO2=0;motoTemp=0;motoFeed=0;motoLight=0;     //公共接口复位，开始NRF24L01工作                                                                                
+ 368   1              init_io();                                                                      //初始化NRF24L01端口
+ 369   1              RX_Mode();                                                                      //将本机设置为接收数据模式
+ 370   1              LCD12864_WriteCmd(0x01);                                        //清除LCD12864的显示内容
+ 371   1              Delay100ms();
+ 372   1              LCD12864_SetWindow(0,0);                                        //LCD初始显示位置左上角(x,y)==(0,0)
+ 373   1              LCD12864Dis(LCD12864Init);                                      //打印开机初始化信息
+ 374   1              LCD12864_SetWindow(1,0);
+ 375   1              LCD12864Dis(LCD12864NRF24L01);
+ 376   1              while(1)
+ 377   1              {       
+ 378   2                      CheckButtons();                                         //按键扫描
+ 379   2                      sta=SPI_Read(STATUS);                                   //读状态寄存器
+ 380   2                  if(RX_DR)                                                           //判断是否接受到数据
+ 381   2                      {                                                                               //从RX_FIFO读出数据
+ 382   3                              SPI_Read_Buf(RD_RX_PLOAD,RX_BUF,TX_PLOAD_WIDTH);
+ 383   3                              flag=1;
+ 384   3                      }
+ 385   2                      SPI_RW_Reg(WRITE_REG+STATUS,sta);               //清除RX_DS中断标志
+ 386   2                      if(flag)                                                        //接受完成
+ 387   2                      {
+ 388   3                              u8 i;
+ 389   3                              flag=0;                                                 //清标志  
+ 390   3                              LCD12864_SetWindow(1,0);                        //LCD显示位置(1,0)
+ 391   3                              LCD12864Dis(LCD12864NRF24L01);
+ 392   3                              LCD12864_SetWindow(2,0);                        //LCD显示位置(2,0)
+ 393   3                              LCD12864Dis(LCD12864TempNRF24L01);
+ 394   3                              for(i=0;i<5;i++)
+ 395   3                                      LCD12864_WriteData(RX_BUF[i]);  //打印接收到的温度数据
+ 396   3                              LCD12864_WriteData('#');                        //打印单位
+ 397   3                              LCD12864_WriteData('C');                        //打印单位
+ 398   3                              LCD12864_SetWindow(3,0);                        //LCD显示位置(3,0)
+ 399   3                              LCD12864Dis(LCD12864Vo2NRF24L01);
+ 400   3                              for(i=5;i<10;i++)
+ 401   3                                      LCD12864_WriteData(RX_BUF[i]);  //打印接收到的氧气数据
+ 402   3                              LCD12864_WriteData('M');                        //打印单位
+ 403   3                              LCD12864_WriteData('G');                        //打印单位
+ 404   3                      }
+ 405   2                      Value=HWValue[2]/16*10+HWValue[2]%16;   //获取数据码高4位和低4位,转化为对应的十进制，方便处理
+ 406   2                      if(Value==40)   break;                                  //实际对应的按键值是4                   
+ 407   2              }
+ 408   1              HWWorkButton_04();                                                      //系统索引界面                          
+ 409   1      }                               
+ 410          void HWWorkButton_06(){return;}                                 //按键功能扩展代码
+ 411          void HWWorkButton_07(){return;}                                 //按键功能扩展代码
+ 412          void HWWorkButton_08(){return;}                                 //按键功能扩展代码
+ 413          void HWWorkButton_09()                                                  //实时显示各项数据--温度-含氧量-光照强度-系统工作温度-电机状态--时钟状况
+ 414          {       
+ 415   1              LCD12864_WriteCmd(0x01);                                 
+ 416   1              Delay100ms();
+ 417   1              while(1)
+ 418   1              {                       
+ 419   2                      u8 t=10;        
+ 420   2                      LCD12864_WriteCmd(0x01);
+ 421   2                      LCD12864_SetWindow(0,0); 
+ 422   2                      LCD12864Dis(LCD12864Init);      
+ 423   2                      while(t!=0)
+ 424   2                      {
+ 425   3                              LCD12864_SetWindow(1,0);
+ 426   3                              LCD12864Dis(LCD12864Temp);              
+ 427   3                              DataDealTemp(Ds18b20ReadTemp());        //温度数据处理函数        
+C51 COMPILER V9.01   MAIN                                                                  06/05/2022 06:55:29 PAGE 8   
+
+ 428   3                              LCD12864Dis(tempDchar);
+ 429   3                              LCD12864Dis("#C");
+ 430   3                              Delay500ms();
+ 431   3                              LCD12864_SetWindow(2,0);
+ 432   3                              LCD12864Dis(LCD12864VO2);
+ 433   3                              DataDealTemp(Ds18b20ReadTemp());        //温度数据处理函数
+ 434   3                              DataDealVO2(TempToVO2(tempD));          //氧气数据处理函数
+ 435   3                              LCD12864Dis(VO2Dchar);
+ 436   3                              LCD12864Dis("MG");
+ 437   3                              Delay500ms();
+ 438   3                              LCD12864_SetWindow(3,0);
+ 439   3                              LCD12864Dis(LCD12864Light);     
+ 440   3                              ADDealLight();                                          //光照数据处理函数
+ 441   3                              LCD12864Dis(Lightchar);
+ 442   3                              LCD12864Dis("LUX");              
+ 443   3                              t--;
+ 444   3                      }
+ 445   2                      LCD12864_WriteCmd(0x01);
+ 446   2                      LCD12864_SetWindow(0,0); 
+ 447   2                      LCD12864Dis(LCD12864Init);
+ 448   2                      t=10;
+ 449   2                      while(t!=0)
+ 450   2                      {
+ 451   3                              LCD12864_SetWindow(1,0);
+ 452   3                              LCD12864Dis(LCD12864SystemTemp);
+ 453   3                              ADDealSystemTemp();                                     //获取系统工作温度              
+ 454   3                              LCD12864Dis(SystemTemp);
+ 455   3                              LCD12864Dis("#C");
+ 456   3                              Delay500ms();
+ 457   3                              LCD12864_SetWindow(2,0);
+ 458   3                              LCD12864Dis(LCD12864motoWorkingStatus);
+ 459   3                              if(motoO2==1||motoTemp==1||motoFeed==1||motoLight==1)
+ 460   3                              {
+ 461   4                                      LCD12864Dis("-ON");                              //查询电机工作状态
+ 462   4                              }
+ 463   3                              else
+ 464   3                              {
+ 465   4                                      LCD12864Dis("OFF");
+ 466   4                              }
+ 467   3                              Delay500ms();
+ 468   3                              LCD12864_SetWindow(3,0);
+ 469   3                              LCD12864Dis(LCD12864TimeWorkingStatus);
+ 470   3                              LCD12864Dis("-ON");     
+ 471   3                              t--;
+ 472   3                      }
+ 473   2                      Value=HWValue[2]/16*10+HWValue[2]%16;   //获取数据码高4位和低4位,转化为对应的十进制，方便处理
+ 474   2                      if(Value==40)   break;                                  //实际对应的按键值是4           
+ 475   2              }
+ 476   1              HWWorkButton_04();                      
+ 477   1      }
+ 478          void HWWorkButton_10(){return;}                                 //按键功能扩展代码
+ 479          void HWWorkButton_11(){return;}                                 //按键功能扩展代码
+ 480          void HWWorkButton_12()                                                  //显示温度大小，实时处理温度
+ 481          {
+ 482   1              LCD12864_WriteCmd(0x01);
+ 483   1              Delay100ms();
+ 484   1              LCD12864_SetWindow(0,0); 
+ 485   1              LCD12864Dis(LCD12864SportWaring);
+ 486   1              while(1)
+ 487   1              {
+ 488   2                      LCD12864_SetWindow(1,0);
+ 489   2                      LCD12864Dis(LCD12864Temp);              
+C51 COMPILER V9.01   MAIN                                                                  06/05/2022 06:55:29 PAGE 9   
+
+ 490   2                      DataDealTemp(Ds18b20ReadTemp());                //温度数据处理函数        
+ 491   2                      LCD12864Dis(tempDchar);
+ 492   2                      LCD12864Dis("#C");
+ 493   2                      if(tempD>=TempH)                                 
+ 494   2                      {
+ 495   3                              LCD12864_SetWindow(2,0);
+ 496   3                              LCD12864Dis(LCD12864WarningTemp);
+ 497   3                              Delay2000ms();                                          //适当延时      
+ 498   3                              BeepWarning();                                          //转入蜂鸣器报警
+ 499   3                      }               
+ 500   2                      else if(tempD<=TempL)                    
+ 501   2                      {
+ 502   3                              LCD12864_SetWindow(2,0);
+ 503   3                              LCD12864Dis(LCD12864WorkingTemp);
+ 504   3                              motoTemp=1;                                                     //转入增温电机工作，提升温度
+ 505   3                      }                                                                
+ 506   2                      else
+ 507   2                      {
+ 508   3                              LCD12864_SetWindow(2,0);
+ 509   3                              LCD12864Dis(LCD1268HintMsgTemp);
+ 510   3                              LCD12864_SetWindow(3,0);
+ 511   3                              LCD12864Dis("TempLH:20#C-30#C");        //正常显示数据
+ 512   3                              Delay1000ms();
+ 513   3                              motoTemp=0;                                                     //关闭电机
+ 514   3                      }
+ 515   2                      Value=HWValue[2]/16*10+HWValue[2]%16;   //获取数据码高4位和低4位,转化为对应的十进制，方便处理
+ 516   2                      if(Value==40)   break;                                  //实际对应的按键值是4           
+ 517   2              }
+ 518   1              HWWorkButton_04();              
+ 519   1      }
+ 520          void HWWorkButton_13()                                                  //显示氧气含量，实时处理温度
+ 521          {
+ 522   1              LCD12864_WriteCmd(0x01);
+ 523   1              Delay100ms();
+ 524   1              LCD12864_SetWindow(0,0); 
+ 525   1              LCD12864Dis(LCD12864SportWaring);
+ 526   1              while(1)
+ 527   1              {       
+ 528   2                      LCD12864_SetWindow(1,0);
+ 529   2                      LCD12864Dis(LCD12864VO2);
+ 530   2                      DataDealTemp(Ds18b20ReadTemp());                //温度数据处理函数
+ 531   2                      DataDealVO2(TempToVO2(tempD));                  //氧气数据处理函数
+ 532   2                      LCD12864Dis(VO2Dchar);
+ 533   2                      LCD12864Dis("MG");
+ 534   2                      if(VO2D<=O2L)                                    
+ 535   2                      {
+ 536   3                              LCD12864_SetWindow(2,0);
+ 537   3                              LCD12864Dis(LCD12864WarningVO2);
+ 538   3                              motoO2=1;                                                       //转入电机工作,提升氧气
+ 539   3                      }
+ 540   2                      else if(VO2D>=O2H)                                       
+ 541   2                      {
+ 542   3                              LCD12864_SetWindow(2,0);
+ 543   3                              LCD12864Dis(LCD12864WorkingFeed);
+ 544   3                              motoFeed=1;                                                     //建议转入投喂机工作    
+ 545   3                      }
+ 546   2                      else
+ 547   2                      {
+ 548   3                              LCD12864_SetWindow(2,0);
+ 549   3                              LCD12864Dis(LCD1268HintMsgVO2);
+ 550   3                              LCD12864_SetWindow(3,0);
+ 551   3                              LCD12864Dis("O2LH:4.5MG-5.5MG");          //正常显示数据
+C51 COMPILER V9.01   MAIN                                                                  06/05/2022 06:55:29 PAGE 10  
+
+ 552   3                              motoO2=0;                                                       //关闭升氧电机  
+ 553   3                              motoFeed=0;                                                     //关闭投料电机
+ 554   3                      }
+ 555   2                      Value=HWValue[2]/16*10+HWValue[2]%16;   //获取数据码高4位和低4位,转化为对应的十进制，方便处理
+ 556   2                      if(Value==40)   break;                                  //实际对应的按键值是4           
+ 557   2              }
+ 558   1              HWWorkButton_04();
+ 559   1      }
+ 560          void HWWorkButton_14()                                                  //显示光照强度，实时处理光照
+ 561          {
+ 562   1              LCD12864_WriteCmd(0x01);
+ 563   1              Delay100ms();   
+ 564   1              LCD12864_SetWindow(0,0); 
+ 565   1              LCD12864Dis(LCD12864SportWaring);                       
+ 566   1              while(1)
+ 567   1              {
+ 568   2                      LCD12864_SetWindow(1,0);
+ 569   2                      LCD12864Dis(LCD12864Light);     
+ 570   2                      ADDealLight();                                                  //光照数据处理函数
+ 571   2                      ADDealLight();                                                  //光照数据处理函数
+ 572   2                      ADDealLight();                                                  //光照数据处理函数
+ 573   2                      LCD12864Dis(Lightchar);
+ 574   2                      LCD12864Dis("LUX");     
+ 575   2                      if(Light>=LightH)
+ 576   2                      {       
+ 577   3                              LCD12864_SetWindow(2,0);
+ 578   3                              LCD12864Dis(LCD12864Lightmsg1);         //提示光照强
+ 579   3                              LCD12864_SetWindow(3,0);
+ 580   3                              LCD12864Dis(LCD12863Line);
+ 581   3                      }
+ 582   2                      else if(Light<=LightL)
+ 583   2                      {
+ 584   3                              LCD12864_SetWindow(2,0);
+ 585   3                              LCD12864Dis(LCD12864Lightmsg2);         //提示光照弱小
+ 586   3                              LCD12864_SetWindow(3,0);
+ 587   3                              LCD12864Dis(LCD12863Line);
+ 588   3                              motoLight=1;                                            //开启电机
+ 589   3                      }
+ 590   2                      else 
+ 591   2                      {
+ 592   3                              LCD12864_SetWindow(2,0);
+ 593   3                              LCD12864Dis(LCD12864LightRang);
+ 594   3                              LCD12864_SetWindow(3,0);
+ 595   3                              LCD12864Dis("光照:100LX-200LX");
+ 596   3                              motoLight=0;                                            //关闭电机
+ 597   3                      }
+ 598   2                      Value=HWValue[2]/16*10+HWValue[2]%16;   //获取数据码高4位和低4位,转化为对应的十进制，方便处理
+ 599   2                      if(Value==40)   break;                                  //实际对应的按键值是4           
+ 600   2              }
+ 601   1              HWWorkButton_04();      
+ 602   1      }
+ 603          void HWWorkButton_15()                                                  //显示系统工作温度
+ 604          {
+ 605   1              LCD12864_WriteCmd(0x01);
+ 606   1              Delay100ms();                            
+ 607   1              LCD12864_SetWindow(0,0); 
+ 608   1              LCD12864Dis(LCD12864SportWaring);
+ 609   1              while(1)
+ 610   1              {
+ 611   2                      LCD12864_SetWindow(1,0);
+ 612   2                      LCD12864Dis(LCD12864SystemTemp);
+ 613   2                      ADDealSystemTemp();                                             //获取系统工作温度
+C51 COMPILER V9.01   MAIN                                                                  06/05/2022 06:55:29 PAGE 11  
+
+ 614   2                      ADDealSystemTemp();                                             //获取系统工作温度
+ 615   2                      ADDealSystemTemp();                                             //获取系统工作温度      
+ 616   2                      LCD12864Dis(SystemTemp);
+ 617   2                      LCD12864Dis("#C");
+ 618   2                      if(StempD>=STempH)
+ 619   2                      {
+ 620   3                              LCD12864_SetWindow(2,0);
+ 621   3                              LCD12864Dis(LCD12864WarningStempH);     //系统温度过高
+ 622   3                              LCD12864_SetWindow(3,0);
+ 623   3                              LCD12864Dis(LCD12863Line);
+ 624   3                              BeepWarning();                                          //蜂鸣器报警
+ 625   3                      }
+ 626   2                      else if(StempD<=STempL)
+ 627   2                      {
+ 628   3                              LCD12864_SetWindow(2,0);
+ 629   3                              LCD12864Dis(LCD12864WarningStempL);     //系统温度过低
+ 630   3                              LCD12864_SetWindow(3,0);
+ 631   3                              LCD12864Dis(LCD12863Line);
+ 632   3                              BeepWarning();                                          //蜂鸣器报警
+ 633   3                      }
+ 634   2                      else
+ 635   2                      {
+ 636   3                              LCD12864_SetWindow(2,0);
+ 637   3                              LCD12864Dis(LCD1268HintMsgSystem);
+ 638   3                              LCD12864_SetWindow(3,0);
+ 639   3                              LCD12864Dis("TempLH:15#C-25#C");        //系统正常工作
+ 640   3                      }
+ 641   2                      Value=HWValue[2]/16*10+HWValue[2]%16;   //获取数据码高4位和低4位,转化为对应的十进制，方便处理
+ 642   2                      if(Value==40)   break;                                  //实际对应的按键值是4           
+ 643   2              }
+ 644   1              HWWorkButton_04();
+ 645   1      }
+ 646          /***非时电机工作状态设计***/
+ 647          void HWWorkButton_16()                                                  //定时增氧
+ 648          {
+ 649   1              LCD12864_WriteCmd(0x01);
+ 650   1              Delay100ms();
+ 651   1              motoO2=1;                                                                       //启动增氧机
+ 652   1              LCD12864_SetWindow(0,0); 
+ 653   1              LCD12864Dis(LCD12864Init);              
+ 654   1              LCD12864_SetWindow(1,0);
+ 655   1              LCD12864Dis(LCD12864WorkingVO2);    
+ 656   1              Ds1302Init();
+ 657   1              while(1)
+ 658   1              {
+ 659   2                      Ds1302ReadTime();
+ 660   2                      LCD12864_SetWindow(2,0);
+ 661   2                      LCD12864Dis(LCD12864WorkingVO2Time);
+ 662   2                      hour=NOWTIME[2]/16*10+NOWTIME[2]&0x0f;
+ 663   2                      min=NOWTIME[1]/16*10+NOWTIME[1]&0x0f;
+ 664   2                      s=NOWTIME[0]/16*10+NOWTIME[0]&0x0f;
+ 665   2                      sumTime=hour*60*60+min*60+s;
+ 666   2                      Timechar[0]=(int)(NOWTIME[2]/16)+'0';   Timechar[1]=(int)(NOWTIME[2]&0x0f)+'0';         Timechar[2]=':';
+ 667   2                      Timechar[3]=(int)(NOWTIME[1]/16)+'0';   Timechar[4]=(int)(NOWTIME[1]&0x0f)+'0';         Timechar[5]=':';
+ 668   2                      Timechar[6]=(int)(NOWTIME[0]/16)+'0';   Timechar[7]=(int)(NOWTIME[0]&0x0f)+'0';
+ 669   2                      LCD12864Dis(Timechar);
+ 670   2                      if(sumTime==UpO2Time)                                   //增氧机的工作时间
+ 671   2                      {
+ 672   3                              motoO2=0;
+ 673   3                              return; 
+ 674   3                      }
+ 675   2                      LCD12864_SetWindow(3,0);
+C51 COMPILER V9.01   MAIN                                                                  06/05/2022 06:55:29 PAGE 12  
+
+ 676   2                      LCD12864Dis(LCD12864WorkingVO2TimeOut); 
+ 677   2                      Value=HWValue[2]/16*10+HWValue[2]%16;
+ 678   2                      if(Value==40)
+ 679   2                      {
+ 680   3                              memset(NOWTIME,0,sizeof(NOWTIME));       //清空时间数据
+ 681   3                              motoO2=0;
+ 682   3                              break;  
+ 683   3                      }                               
+ 684   2              }
+ 685   1              HWWorkButton_04();
+ 686   1      }
+ 687          void HWWorkButton_17()                                                  //定时增料
+ 688          {
+ 689   1              LCD12864_WriteCmd(0x01);
+ 690   1              Delay100ms();                                           
+ 691   1              motoFeed=1;                                                                     //开启喂养机
+ 692   1              LCD12864_SetWindow(0,0); 
+ 693   1              LCD12864Dis(LCD12864Init);              
+ 694   1              LCD12864_SetWindow(1,0);
+ 695   1              LCD12864Dis(LCD12864WorkingFeed);       
+ 696   1              Ds1302Init();                                                           //初始化Ds302时钟，从00:00:00开始计时
+ 697   1              while(1)
+ 698   1              {
+ 699   2                      Ds1302ReadTime();       
+ 700   2                      LCD12864_SetWindow(2,0);
+ 701   2                      LCD12864Dis(LCD12864WorkingFeedTime);
+ 702   2                      hour=NOWTIME[2]/16*10+NOWTIME[2]&0x0f;
+ 703   2                      min=NOWTIME[1]/16*10+NOWTIME[1]&0x0f;
+ 704   2                      s=NOWTIME[0]/16*10+NOWTIME[0]&0x0f;
+ 705   2                      sumTime=hour*60*60+min*60+s;                    //计算时间总和
+ 706   2                      Timechar[0]=(int)(NOWTIME[2]/16)+'0';   Timechar[1]=(int)(NOWTIME[2]&0x0f)+'0';         Timechar[2]=':';
+ 707   2                      Timechar[3]=(int)(NOWTIME[1]/16)+'0';   Timechar[4]=(int)(NOWTIME[1]&0x0f)+'0';         Timechar[5]=':';
+ 708   2                      Timechar[6]=(int)(NOWTIME[0]/16)+'0';   Timechar[7]=(int)(NOWTIME[0]&0x0f)+'0';
+ 709   2                      LCD12864Dis(Timechar);                                  //实时显示时间
+ 710   2                      if(sumTime==UpFeedTime)                                 //投料机器的工作时间
+ 711   2                      {
+ 712   3                              motoFeed=0;                                                     //关闭喂养机
+ 713   3                              return; 
+ 714   3                      }
+ 715   2                      LCD12864_SetWindow(3,0);
+ 716   2                      LCD12864Dis(LCD12864WorkingFeedTimeOut);//显示提示信息
+ 717   2                      Value=HWValue[2]/16*10+HWValue[2]%16;
+ 718   2                      if(Value==40)
+ 719   2                      {
+ 720   3                              memset(NOWTIME,0,sizeof(NOWTIME));       //清空时间数据
+ 721   3                              motoFeed=0;
+ 722   3                              break;  
+ 723   3                      }
+ 724   2              }
+ 725   1              HWWorkButton_04();
+ 726   1      }
+ 727          /***非定时电机工作状态设计***/
+ 728          void HWWorkButton_18()                                                  //增氧电机工作
+ 729          {
+ 730   1              LCD12864_WriteCmd(0x01);
+ 731   1              Delay100ms();
+ 732   1              motoO2=1;
+ 733   1              LCD12864_SetWindow(0,0); 
+ 734   1              LCD12864Dis(LCD12864Init);      
+ 735   1              while(1)
+ 736   1              {       
+ 737   2                      LCD12864_SetWindow(0,0);                                //LCD初始显示位置左上角(x,y)==(0,0)
+C51 COMPILER V9.01   MAIN                                                                  06/05/2022 06:55:29 PAGE 13  
+
+ 738   2                      LCD12864Dis(LCD12864Init);                              //打印开机初始化信息            
+ 739   2                      LCD12864_SetWindow(1,0);                
+ 740   2                      LCD12864Dis(LCD12864WorkingVO2);
+ 741   2                      LCD12864_SetWindow(2,0);
+ 742   2                      LCD12864Dis(LCD12864VO2);
+ 743   2                      DataDealTemp(Ds18b20ReadTemp());                //温度数据处理函数
+ 744   2                      DataDealVO2(TempToVO2(tempD));                  //氧气数据处理函数
+ 745   2                      LCD12864Dis(VO2Dchar);
+ 746   2                      LCD12864Dis("MG");              
+ 747   2                      LCD12864_SetWindow(3,0);
+ 748   2                      if(VO2D>=5.5)   motoO2=0;       
+ 749   2                      LCD12864Dis("氧达到5.00MG关闭");
+ 750   2                      Value=HWValue[2]/16*10+HWValue[2]%16;   //获取数据码高4位和低4位,转化为对应的十进制，方便处理
+ 751   2                      if(Value==40)   break;          
+ 752   2              }
+ 753   1              HWWorkButton_04();
+ 754   1      }
+ 755          void HWWorkButton_19()                                                  //增温电机工作    
+ 756          {
+ 757   1              LCD12864_WriteCmd(0x01);
+ 758   1              Delay100ms();
+ 759   1              motoTemp=1;
+ 760   1              LCD12864_SetWindow(0,0); 
+ 761   1              LCD12864Dis(LCD12864Init);
+ 762   1              while(1)
+ 763   1              {
+ 764   2                      LCD12864_SetWindow(0, 0);                               //LCD初始显示位置左上角(x,y)==(0,0)
+ 765   2                      LCD12864Dis(LCD12864Init);                              //打印开机初始化信息
+ 766   2                      LCD12864_SetWindow(1,0);                
+ 767   2                      LCD12864Dis(LCD12864WorkingTemp);
+ 768   2                      LCD12864_SetWindow(2,0);
+ 769   2                      LCD12864Dis(LCD12864Temp);              
+ 770   2                      DataDealTemp(Ds18b20ReadTemp());                //温度数据处理函数        
+ 771   2                      LCD12864Dis(tempDchar);
+ 772   2                      LCD12864Dis("#C");
+ 773   2                      LCD12864_SetWindow(3,0);
+ 774   2                      if(tempD>=20.0)         motoTemp=0;     
+ 775   2                      LCD12864Dis("温度达到20#C关闭");
+ 776   2                      Value=HWValue[2]/16*10+HWValue[2]%16;   //获取数据码高4位和低4位,转化为对应的十进制，方便处理
+ 777   2                      if(Value==40)   break;          
+ 778   2              }
+ 779   1              HWWorkButton_04();
+ 780   1      }
+ 781          void HWWorkButton_20()                                                  //增料电机工作
+ 782          {       
+ 783   1              LCD12864_WriteCmd(0x01);
+ 784   1              Delay100ms();
+ 785   1              motoFeed=1;
+ 786   1              LCD12864_SetWindow(0,0); 
+ 787   1              LCD12864Dis(LCD12864Init);
+ 788   1              while(1)
+ 789   1              {
+ 790   2                      LCD12864_SetWindow(0, 0);                               //LCD初始显示位置左上角(x,y)==(0,0)
+ 791   2                      LCD12864Dis(LCD12864Init);                              //打印开机初始化信息
+ 792   2                      LCD12864_SetWindow(1,0);                
+ 793   2                      LCD12864Dis(LCD12864WorkingFeed);
+ 794   2                      LCD12864_SetWindow(2,0);
+ 795   2                      LCD12864Dis(LCD12863Line);
+ 796   2                      LCD12864_SetWindow(3,0);
+ 797   2                      LCD12864Dis(LCD12863Line);
+ 798   2                      Value=HWValue[2]/16*10+HWValue[2]%16;   //获取数据码高4位和低4位,转化为对应的十进制，方便处理
+ 799   2                      if(Value==40) break;    
+C51 COMPILER V9.01   MAIN                                                                  06/05/2022 06:55:29 PAGE 14  
+
+ 800   2              }
+ 801   1              HWWorkButton_04();              
+ 802   1      }
+ 803          /***负责红外通信数据采集，总功能模块跳转main()代码***/                                                    
+ 804          void main(void)
+ 805          {
+ 806   1              InitSystem();                                                           //初始化系统和外部中断系统
+ 807   1              Init0Int();                                                                     //初始化外部中断系统0
+ 808   1              LCD12864_Init();                                                        //初始化LCD12864
+ 809   1              LCD12864_SetWindow(0,0);                                        //LCD初始显示位置左上角(x,y)==(0,0)
+ 810   1              LCD12864Dis(LCD12864Init);                                      //打印开机初始化信息
+ 811   1              LCD12864_SetWindow(1,0);                                        //LCD初始显示位置左上角(x,y)==(1,0)
+ 812   1              LCD12864Dis(LCD12864User);      
+ 813   1              LCD12864_SetWindow(2,0);
+ 814   1              LCD12864Dis(LCD12863Line);      
+ 815   1              LCD12864_SetWindow(3,0);
+ 816   1              LCD12864Dis(LCD12863Line);
+ 817   1              Delay100ms();                                                           //延时等待
+ 818   1              HWWorkButton_00();                                                      //进入开机界面
+ 819   1      //      HWWorkButton_0x();                                                      //测试代码
+ 820   1              while(1)                                                                        //红外控制界面
+ 821   1              {       
+ 822   2                      u8 i; 
+ 823   2                      Value=HWValue[2]/16*10+HWValue[2]%16;   //获取数据码高4位和低4位,转化为对应的十进制，方便处理                   
+ 824   2                      for(i=0;i<21;i++)                                               //共计21个按键
+ 825   2                      {
+ 826   3                              if(Value==HWsmgduan[i])                         //转化为按键码
+ 827   3                              {       
+ 828   4                                      LCD12864_WriteCmd(0x01);                //清除LCD12864的显示内容
+ 829   4                                      switch(i)
+ 830   4                                      {
+ 831   5                                              case 0: HWWorkButton_00();break; //开机界面显示
+ 832   5                                              case 1: HWWorkButton_01();break; //时钟测试按键
+ 833   5                                              case 2: HWWorkButton_02();break; //蜂鸣器测试
+ 834   5                                              case 3: HWWorkButton_03();break; //显示各个电机工作状态
+ 835   5                                              case 4: HWWorkButton_04();break; //系统索引界面，不写在主函数中.
+ 836   5                                              case 5: HWWorkButton_05();break; //NRF24L01无线通信显示界面
+ 837   5                                              case 6: HWWorkButton_06();break; //待扩展
+ 838   5                                              case 7: HWWorkButton_07();break; //待扩展
+ 839   5                                              case 8: HWWorkButton_08();break; //待扩展
+ 840   5                                              case 9: HWWorkButton_09();break; //显示各项水体温度数据
+ 841   5                                              case 10:HWWorkButton_10();break; //待扩展
+ 842   5                                              case 11:HWWorkButton_11();break; //待扩展
+ 843   5                                              case 12:HWWorkButton_12();break; //显示温度
+ 844   5                                              case 13:HWWorkButton_13();break; //显示氧气
+ 845   5                                              case 14:HWWorkButton_14();break; //显示光照
+ 846   5                                              case 15:HWWorkButton_15();break; //显示系统工作实际温度
+ 847   5                                              case 16:HWWorkButton_16();break; //定时增氧
+ 848   5                                              case 17:HWWorkButton_17();break; //定时增料
+ 849   5                                              case 18:HWWorkButton_18();break; //增氧电机工作
+ 850   5                                              case 19:HWWorkButton_19();break; //增温电机工作
+ 851   5                                              case 20:HWWorkButton_20();break; //增料电机工作
+ 852   5                                      }                                                       
+ 853   4                              }                                                          
+ 854   3                      }       
+ 855   2              }               
+ 856   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   4869    ----
+   CONSTANT SIZE    =    933    ----
+C51 COMPILER V9.01   MAIN                                                                  06/05/2022 06:55:29 PAGE 15  
+
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =     79      37
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----       1
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

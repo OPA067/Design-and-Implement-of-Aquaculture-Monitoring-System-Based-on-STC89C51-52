@@ -1,0 +1,52 @@
+C51 COMPILER V9.01   INDEX                                                                 06/05/2022 06:55:30 PAGE 1   
+
+
+C51 COMPILER V9.01, COMPILATION OF MODULE INDEX
+OBJECT MODULE PLACED IN index.OBJ
+COMPILER INVOKED BY: D:\Keil\C51\BIN\C51.EXE index.c ROM(COMPACT) BROWSE DEBUG OBJECTEXTEND
+
+line level    source
+
+   1          /***单片机相关装置***/
+   2          /***显示装置***/        
+   3          
+   4          
+   5          
+   6          /***温室鱼类养殖相关装置***/
+   7          /***
+   8          升温装置 MotoTempworking
+   9          升养装置 MotoO2working
+  10          投料装置 MotoFeedworking
+  11          光照装置 MotoLightworking
+  12          
+  13          
+  14          报警装置 BeepWarning ：
+  15                                                          1.氧气报警
+  16                                                          2.温度报警
+  17                                                          3.光照报警
+  18                                                          4.工作设备(本单片机)温度报警
+  19          
+  20          0  1  2    开机显示界面--xx--蜂鸣器测试按键
+  21          3  4  5    xx--xx--xx
+  22          6  7  8    xx--xx--xx 
+  23          9  10 11   系统全部开始工作--xx--xx
+  24          12 13 14
+  25          15 16 17 
+  26          18 19 20
+  27          ***/
+  28          
+  29                  
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   ----    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

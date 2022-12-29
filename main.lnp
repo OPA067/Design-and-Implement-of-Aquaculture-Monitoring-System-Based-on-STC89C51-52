@@ -1,0 +1,9 @@
+"main.obj",
+"lcd12864.obj",
+"temp.obj",
+"XPT2046.obj",
+"O2.obj",
+"ds1302.obj",
+"index.obj" 
+TO "main" 
+RAMSIZE(256) 

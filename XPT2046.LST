@@ -1,0 +1,69 @@
+C51 COMPILER V9.01   XPT2046                                                               06/05/2022 06:55:29 PAGE 1   
+
+
+C51 COMPILER V9.01, COMPILATION OF MODULE XPT2046
+OBJECT MODULE PLACED IN XPT2046.OBJ
+COMPILER INVOKED BY: D:\Keil\C51\BIN\C51.EXE XPT2046.c ROM(COMPACT) BROWSE DEBUG OBJECTEXTEND
+
+line level    source
+
+   1          #include"XPT2046.h"
+   2          void SPI_AD_Write(uchar dat)
+   3          {
+   4   1              uchar i;
+   5   1              CLK=0;
+   6   1              for(i=0;i<8;i++)
+   7   1              {
+   8   2                      DIN=dat>>7;             //放置最高位
+   9   2                      dat<<=1;
+  10   2                      CLK=0;                          //上升沿放置数据
+  11   2                      CLK=1;
+  12   2              }
+  13   1      }
+  14          uint SPI_AD_Read(void)
+  15          {
+  16   1              uint i,dat=0;
+  17   1              CLK=0;
+  18   1              for(i=0;i<12;i++)               //接收12位数据
+  19   1              {
+  20   2                      dat<<=1;
+  21   2                      CLK=1;
+  22   2                      CLK=0;
+  23   2                      dat|=DOUT;
+  24   2              }
+  25   1              return dat;     
+  26   1      }
+  27          uint Read_AD_Data(uchar cmd)
+  28          {
+  29   1              uchar i;
+  30   1              uint AD_Value;
+  31   1              CLK=0;
+  32   1              CS=0;
+  33   1              SPI_AD_Write(cmd);
+  34   1              for(i=6;i>0;i--);               //延时等待转换结果
+  35   1              CLK=1;                                  //发送一个时钟周期，清除BUSY
+  36   1              _nop_();
+  37   1              _nop_();
+  38   1              CLK=0;
+  39   1              _nop_();
+  40   1              _nop_();
+  41   1              AD_Value=SPI_AD_Read();
+  42   1              CS=1;
+  43   1              return AD_Value;        
+  44   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =     89    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+C51 COMPILER V9.01   XPT2046                                                               06/05/2022 06:55:29 PAGE 2   
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)
