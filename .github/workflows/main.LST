@@ -1,0 +1,148 @@
+C51 COMPILER V9.01   MAIN                                                                  06/04/2022 12:11:56 PAGE 1   
+
+
+C51 COMPILER V9.01, COMPILATION OF MODULE MAIN
+OBJECT MODULE PLACED IN main.OBJ
+COMPILER INVOKED BY: D:\Keil\C51\BIN\C51.EXE main.c ROM(COMPACT) BROWSE DEBUG OBJECTEXTEND
+
+line level    source
+
+   1          /***导入头文件***/
+   2          #include"reg52.h"
+   3          #include"nRF.h"
+   4          #include"temp.h"
+   5          #include"O2.h"
+   6          /***相关变量说明***/
+   7          typedef unsigned int u16;               //对数据类型进行声明定义
+   8          typedef unsigned char u8;               //对数据类型进行声明定义
+   9          u8 flag=0;                                              //定义数据接收标识字符
+  10          sbit k1=P3^1;                                   //按键，设置主机和从机的关键
+  11          u8 ChooseZC=0;                                  //主机和从机设置标志
+  12          double NRFtemp;                                 //记录从机温度数据和氧气数据
+  13          /***延时函数1s***/
+  14          void Delay1000ms()              //@11.0592MHz
+  15          {
+  16   1              unsigned char i,j,k;
+  17   1              i=8;j=1;k=243;
+  18   1              do
+  19   1              {
+  20   2                      do
+  21   2                      {
+  22   3                              while(--k);
+  23   3                      }while(--j);
+  24   2              }while(--i);
+  25   1      }
+  26          
+  27          /***检测NRF24L01通信是否正常***/
+  28          u8 bdata sta;                                   //定义无线通信的标识字符
+  29          sbit RX_DR      =sta^6;
+  30          sbit TX_DS      =sta^5;
+  31          sbit MAX_RT     =sta^4;
+  32          u8 Check_ACK(bit clear)
+  33          {
+  34   1              while(IRQ);
+  35   1              sta=SPI_RW(NOP);                        //返回状态寄存器
+  36   1              if(MAX_RT)
+  37   1              {                                                                               
+  38   2                      if(clear)                               //没有清除在复位MAX_RT中断标志后重发
+  39   2                      {
+  40   3                              SPI_RW(FLUSH_TX);
+  41   3                      }               
+  42   2              }
+  43   1              SPI_RW_Reg(WRITE_REG+STATUS,sta);               //清除TX_DS或MAX_RT中断标志
+  44   1              IRQ=1;
+  45   1              if(TX_DS)       return(0x00);
+  46   1              else    return(0xff);
+  47   1      }
+  48          
+  49          /***温度数据处理函数 功能：提取温度数据的各个位数：t1t2.t3t4.#C;***/
+  50          void DataDealTemp(int temp)      
+  51          {
+  52   1              double tp;
+  53   1              int t1,t2,t3,t4;  
+  54   1              tp=temp;                                        //因为数据处理有小数点所以将温度赋给一个浮点型变量
+  55   1              temp=tp*0.0625*100+0.5;     //+0.5是四舍五入
+C51 COMPILER V9.01   MAIN                                                                  06/04/2022 12:11:56 PAGE 2   
+
+  56   1              t1=temp%10000/1000;                     //温度十位
+  57   1              TX_BUF[0]=t1+'0';       
+  58   1              t2=temp%1000/100;                       //温度个位
+  59   1              TX_BUF[1]=t2+'0';       
+  60   1              TX_BUF[2]='.';
+  61   1              t3=temp%100/10;                         //温度十分位
+  62   1              TX_BUF[3]=t3+'0';
+  63   1              t4=temp%10/1;                           //温度百分位
+  64   1              TX_BUF[4]=t4+'0';                       //以上等价==memset(TX_BUF,t);
+  65   1              NRFtemp=t1*10+t2+t3*0.1+t4*0.01;                //记录温度数据
+  66   1      }
+  67          /***氧气数据处理函数 功能：提取氧气数据的各个位数：t1t2.t3t4.MG;***/
+  68          void DataDealVO2()       
+  69          {
+  70   1              int vo2=TempToVO2(NRFtemp)*100;
+  71   1              TX_BUF[5]=vo2/1000+'0';    //氧气数据十位
+  72   1              TX_BUF[6]=vo2/100%10+'0';  //氧气数据个位
+  73   1              TX_BUF[7]='.';                     //小数点
+  74   1              TX_BUF[8]=vo2/10%10+'0';   //氧气数据十分位
+  75   1              TX_BUF[9]=vo2%10+'0';      //氧气数据百分位
+  76   1      }
+  77          /***按键操作，用户确定主机和从机***/
+  78          void CheckButtons()
+  79          {       
+  80   1              if(k1==0)                                                                       //用户按下K1按键，说明当前被按下的单片机为数据发送端，另外一段为数据接收端                  
+  81   1              {
+  82   2                      delay_ms(20);                                                   //延时
+  83   2                      if(k1==0)                           
+  84   2                      {
+  85   3                              DataDealTemp(Ds18b20ReadTemp());        //温度数据处理函数
+  86   3                              DataDealVO2();                                          //氧气数据处理函数
+  87   3                              TX_Mode(TX_BUF);                                        //把nRF24L01设置为发送模式并发送数据
+  88   3                              Check_ACK(1);                           //等待发送完毕，清除TX_FIFO
+  89   3                              RX_Mode();                                              //设置为接收模式
+  90   3                              while(!k1);                                                     //消抖
+  91   3                              ChooseZC=1;                                                     //设置标识
+  92   3                      }       
+  93   2              }
+  94   1              if(ChooseZC==1)
+  95   1              {
+  96   2                      Delay1000ms();                                                  //延时2000ms再进行数据传输，可适当增加到一分钟
+  97   2                      DataDealTemp(Ds18b20ReadTemp());                //温度数据处理函数
+  98   2                      DataDealVO2();                                                  //氧气数据处理函数
+  99   2                      TX_Mode(TX_BUF);                                                //把nRF24L01设置为发送模式并发送数据
+ 100   2                      Check_ACK(1);                                   //等待发送完毕，清除TX_FIFO
+ 101   2                      RX_Mode();                                                      //设置为接收模式                
+ 102   2              }       
+ 103   1      }
+ 104          /***主函数部分，发送数据控制代码***/
+ 105          void main(void)
+ 106          {
+ 107   1              init_io();                                                                              //初始化IO
+ 108   1              RX_Mode();                                                                              //设置为接收模式
+ 109   1              while(1)
+ 110   1              {
+ 111   2                      CheckButtons();                                                                 //按键扫描
+ 112   2                      sta=SPI_Read(STATUS);                                                           //读状态寄存器
+ 113   2                  if(RX_DR)                                                                                   //判断是否接受到数据
+ 114   2                      {
+ 115   3                              SPI_Read_Buf(RD_RX_PLOAD,RX_BUF,TX_PLOAD_WIDTH);//从RX FIFO读出数据
+ 116   3                              flag=1;
+ 117   3                      }
+C51 COMPILER V9.01   MAIN                                                                  06/04/2022 12:11:56 PAGE 3   
+
+ 118   2                      SPI_RW_Reg(WRITE_REG+STATUS,sta);                                       //清除RX_DS中断标志
+ 119   2              }
+ 120   1      }
+ 121          
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    870    ----
+   CONSTANT SIZE    =     10    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =     27      23
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----       1
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

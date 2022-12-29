@@ -1,0 +1,35 @@
+C51 COMPILER V9.01   O2                                                                    06/04/2022 12:11:57 PAGE 1   
+
+
+C51 COMPILER V9.01, COMPILATION OF MODULE O2
+OBJECT MODULE PLACED IN O2.OBJ
+COMPILER INVOKED BY: D:\Keil\C51\BIN\C51.EXE O2.c ROM(COMPACT) BROWSE DEBUG OBJECTEXTEND
+
+line level    source
+
+   1          #include"O2.h"
+   2          /*拟合函数*/
+   3          /*
+   4                  0.00137359*x^2-0.16400919*x+8.21849879  R^2=0.9985
+   5          */
+   6          double TempToVO2(double temp)
+   7          {
+   8   1      //      double VO2=-0.0927*temp+7.4023;                                 //最小二乘法拟合
+   9   1      //      double VO2=-2.1713*log10(temp)+11.911;                  //拉格朗日拟合
+  10   1              double VO2=0.00137359*temp*temp-0.16400919*temp+8.21849879;     //多项式拟合
+  11   1              return VO2;
+  12   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =     96    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----       4
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

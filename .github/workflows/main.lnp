@@ -1,0 +1,5 @@
+"main.obj",
+"temp.obj",
+"O2.obj" 
+TO "main" 
+RAMSIZE(256) 

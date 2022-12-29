@@ -1,0 +1,133 @@
+C51 COMPILER V9.01   NRF                                                                   04/20/2022 16:18:50 PAGE 1   
+
+
+C51 COMPILER V9.01, COMPILATION OF MODULE NRF
+OBJECT MODULE PLACED IN nRF.OBJ
+COMPILER INVOKED BY: D:\Keil\C51\BIN\C51.EXE nRF.c BROWSE DEBUG OBJECTEXTEND
+
+line level    source
+
+   1          #include"nRF.h"
+   2          #include"reg52.h"
+   3          
+   4          void init_io(void)
+   5          {
+   6   1              CE  = 0;        // ´ý»ú
+   7   1              CSN = 1;        // SPI½ûÖ¹
+   8   1              SCK = 0;        // SPIÊ±ÖÓÖÃµÍ
+   9   1              IRQ = 1;        // ÖÐ¶Ï¸´Î»
+  10   1      }
+*** ERROR C237 IN LINE 10 OF NRF.C: 'init_io': function already has a body
+  11          
+  12          void delay_ms(uchar x)
+  13          {
+  14   1          uchar i, j;
+  15   1          i = 0;
+  16   1          for(i=0; i<x; i++)
+  17   1          {
+  18   2             j = 250;
+  19   2             while(--j);
+  20   2                 j = 250;
+  21   2             while(--j);
+  22   2          }
+  23   1      }
+*** ERROR C237 IN LINE 23 OF NRF.C: '_delay_ms': function already has a body
+  24          
+  25          uchar SPI_RW(uchar byte)
+  26          {
+  27   1              uchar i;
+  28   1              for(i=0; i<8; i++)          // Ñ­»·8´Î
+  29   1              {
+  30   2                      MOSI = (byte & 0x80);   // byte×î¸ßÎ»Êä³öµ½MOSI
+  31   2                      byte <<= 1;             // µÍÒ»Î»ÒÆÎ»µ½×î¸ßÎ»
+  32   2                      SCK = 1;                // À­¸ßSCK£¬nRF24L01´ÓMOSI¶ÁÈë1Î»Êý¾Ý£¬Í¬Ê±´ÓMISOÊä³ö1Î»Êý¾Ý
+  33   2                      byte |= MISO;           // ¶ÁMISOµ½byte×îµÍÎ»
+  34   2                      SCK = 0;                // SCKÖÃµÍ
+  35   2              }
+  36   1          return(byte);               // ·µ»Ø¶Á³öµÄÒ»×Ö½Ú
+  37   1      }
+*** ERROR C237 IN LINE 37 OF NRF.C: '_SPI_RW': function already has a body
+  38          
+  39          uchar SPI_RW_Reg(uchar reg, uchar value)
+  40          {
+  41   1              uchar status;
+  42   1              CSN = 0;                   // CSNÖÃµÍ£¬¿ªÊ¼´«ÊäÊý¾Ý
+  43   1              status = SPI_RW(reg);      // Ñ¡Ôñ¼Ä´æÆ÷£¬Í¬Ê±·µ»Ø×´Ì¬×Ö
+  44   1              SPI_RW(value);             // È»ºóÐ´Êý¾Ýµ½¸Ã¼Ä´æÆ÷
+  45   1              CSN = 1;                   // CSNÀ­¸ß£¬½áÊøÊý¾Ý´«Êä
+  46   1              return(status);            // ·µ»Ø×´Ì¬¼Ä´æÆ÷
+  47   1      }
+*** ERROR C237 IN LINE 47 OF NRF.C: '_SPI_RW_Reg': function already has a body
+  48          
+  49          /**************************************************/
+  50          uchar SPI_Read(uchar reg)
+  51          {
+C51 COMPILER V9.01   NRF                                                                   04/20/2022 16:18:50 PAGE 2   
+
+  52   1              uchar reg_val;
+  53   1              CSN = 0;                    // CSNÖÃµÍ£¬¿ªÊ¼´«ÊäÊý¾Ý
+  54   1              SPI_RW(reg);                // Ñ¡Ôñ¼Ä´æÆ÷
+  55   1              reg_val = SPI_RW(0);        // È»ºó´Ó¸Ã¼Ä´æÆ÷¶ÁÊý¾Ý
+  56   1              CSN = 1;                    // CSNÀ­¸ß£¬½áÊøÊý¾Ý´«Êä
+  57   1              return(reg_val);            // ·µ»Ø¼Ä´æÆ÷Êý¾Ý
+  58   1      }
+*** ERROR C237 IN LINE 58 OF NRF.C: '_SPI_Read': function already has a body
+  59          
+  60          uchar SPI_Read_Buf(uchar reg, uchar * pBuf, uchar bytes)
+  61          {
+  62   1              uchar status, i;
+  63   1              CSN = 0;                    // CSNÖÃµÍ£¬¿ªÊ¼´«ÊäÊý¾Ý
+  64   1              status = SPI_RW(reg);       // Ñ¡Ôñ¼Ä´æÆ÷£¬Í¬Ê±·µ»Ø×´Ì¬×Ö
+  65   1              for(i=0; i<bytes; i++)
+  66   1              pBuf[i] = SPI_RW(0);    // Öð¸ö×Ö½Ú´ÓnRF24L01¶Á³ö
+  67   1              CSN = 1;                    // CSNÀ­¸ß£¬½áÊøÊý¾Ý´«Êä
+  68   1              return(status);             // ·µ»Ø×´Ì¬¼Ä´æÆ÷
+  69   1      }
+*** ERROR C237 IN LINE 69 OF NRF.C: '_SPI_Read_Buf': function already has a body
+  70          
+  71          uchar SPI_Write_Buf(uchar reg, uchar * pBuf, uchar bytes)
+  72          {
+  73   1              uchar status, i;
+  74   1              CSN = 0;                    // CSNÖÃµÍ£¬¿ªÊ¼´«ÊäÊý¾Ý
+  75   1              status = SPI_RW(reg);       // Ñ¡Ôñ¼Ä´æÆ÷£¬Í¬Ê±·µ»Ø×´Ì¬×Ö
+  76   1              for(i=0; i<bytes; i++)
+  77   1              SPI_RW(pBuf[i]);        // Öð¸ö×Ö½ÚÐ´ÈënRF24L01
+  78   1              CSN = 1;                    // CSNÀ­¸ß£¬½áÊøÊý¾Ý´«Êä
+  79   1              return(status);             // ·µ»Ø×´Ì¬¼Ä´æÆ÷
+  80   1      }
+*** ERROR C237 IN LINE 80 OF NRF.C: '_SPI_Write_Buf': function already has a body
+  81          
+  82          void RX_Mode(void)
+  83          {
+  84   1              CE = 0;
+  85   1              SPI_Write_Buf(WRITE_REG + RX_ADDR_P0, TX_ADDRESS, TX_ADR_WIDTH);  // ½ÓÊÕÉè±¸½ÓÊÕÍ¨µÀ0Ê¹ÓÃºÍ·¢ËÍÉè±¸ÏàÍ
+             -¬µÄ·¢ËÍµØÖ·
+  86   1              SPI_RW_Reg(WRITE_REG + EN_AA, 0x01);               // Ê¹ÄÜ½ÓÊÕÍ¨µÀ0×Ô¶¯Ó¦´ð
+  87   1              SPI_RW_Reg(WRITE_REG + EN_RXADDR, 0x01);           // Ê¹ÄÜ½ÓÊÕÍ¨µÀ0
+  88   1              SPI_RW_Reg(WRITE_REG + RF_CH, 40);                 // Ñ¡ÔñÉäÆµÍ¨µÀ0x40
+  89   1              SPI_RW_Reg(WRITE_REG + RX_PW_P0, TX_PLOAD_WIDTH);  // ½ÓÊÕÍ¨µÀ0Ñ¡ÔñºÍ·¢ËÍÍ¨µÀÏàÍ¬ÓÐÐ§Êý¾Ý¿í¶È
+  90   1              SPI_RW_Reg(WRITE_REG + RF_SETUP, 0x07);            // Êý¾Ý´«ÊäÂÊ1Mbps£¬·¢Éä¹¦ÂÊ0dBm£¬µÍÔëÉù·Å´óÆ÷ÔöÒæ
+  91   1              SPI_RW_Reg(WRITE_REG + CONFIG, 0x0f);              // CRCÊ¹ÄÜ£¬16Î»CRCÐ£Ñé£¬ÉÏµç£¬½ÓÊÕÄ£Ê½
+  92   1              CE = 1;                                            // À­¸ßCEÆô¶¯½ÓÊÕÉè±¸
+  93   1      }
+*** ERROR C237 IN LINE 93 OF NRF.C: 'RX_Mode': function already has a body
+  94          void TX_Mode(uchar * BUF)
+  95          {
+  96   1              CE = 0;
+  97   1              SPI_Write_Buf(WRITE_REG + TX_ADDR, TX_ADDRESS, TX_ADR_WIDTH);     // Ð´Èë·¢ËÍµØÖ·
+  98   1              SPI_Write_Buf(WRITE_REG + RX_ADDR_P0, TX_ADDRESS, TX_ADR_WIDTH);  // ÎªÁËÓ¦´ð½ÓÊÕÉè±¸£¬½ÓÊÕÍ¨µÀ0µØÖ·ºÍ·
+             -¢ËÍµØÖ·ÏàÍ¬
+  99   1              SPI_Write_Buf(WR_TX_PLOAD, BUF, TX_PLOAD_WIDTH);                  // Ð´Êý¾Ý°üµ½TX FIFO
+ 100   1              SPI_RW_Reg(WRITE_REG + EN_AA, 0x01);       // Ê¹ÄÜ½ÓÊÕÍ¨µÀ0×Ô¶¯Ó¦´ð
+ 101   1              SPI_RW_Reg(WRITE_REG + EN_RXADDR, 0x01);   // Ê¹ÄÜ½ÓÊÕÍ¨µÀ0
+ 102   1              SPI_RW_Reg(WRITE_REG + SETUP_RETR, 0x0a);  // ×Ô¶¯ÖØ·¢ÑÓÊ±µÈ´ý250us+86us£¬×Ô¶¯ÖØ·¢10´Î
+ 103   1              SPI_RW_Reg(WRITE_REG + RF_CH, 40);         // Ñ¡ÔñÉäÆµÍ¨µÀ0x40
+ 104   1              SPI_RW_Reg(WRITE_REG + RF_SETUP, 0x07);    // Êý¾Ý´«ÊäÂÊ1Mbps£¬·¢Éä¹¦ÂÊ0dBm£¬µÍÔëÉù·Å´óÆ÷ÔöÒæ
+ 105   1              SPI_RW_Reg(WRITE_REG + CONFIG, 0x0e);      // CRCÊ¹ÄÜ£¬16Î»CRCÐ£Ñé£¬ÉÏµç
+ 106   1              CE = 1;
+ 107   1      }
+C51 COMPILER V9.01   NRF                                                                   04/20/2022 16:18:50 PAGE 3   
+
+*** ERROR C237 IN LINE 107 OF NRF.C: '_TX_Mode': function already has a body
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  9 ERROR(S)
